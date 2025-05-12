@@ -456,7 +456,7 @@ def parse_config_data(data: dict) -> Config:
 
     # create config object
     config = Config(
-        references=ensure_list(data.get(SupportedConfigKeys.REFS.value, [])),
+        references={SupportedConfigKeys.REFS.value: ensure_list(data.get(SupportedConfigKeys.REFS.value, []))},
         import_tagged=data.get(SupportedConfigKeys.IMPORT_TAGGED.value),
         import_query=data.get(SupportedConfigKeys.IMPORT_QUERY.value),
         verify_ssl=data.get(SupportedConfigKeys.VERIFY_SSL.value, False),
