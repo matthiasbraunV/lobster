@@ -77,7 +77,7 @@ class Config_Parser(Parser_Base):
 
         item_tag = Tracing_Tag(namespace = "req",
                                tag       = n_obj.fully_qualified_name(),
-                               version   = item_data["version"])
+                               version   = item_data.get("version", None))
 
         item_loc = File_Reference(filename = n_obj.location.file_name,
                                   line     = n_obj.location.line_no,
