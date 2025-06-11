@@ -1,6 +1,6 @@
 import json
 from typing import List
-from flask import Flask, jsonify, request, make_response, Response
+from flask import Flask, Response
 from threading import Lock
 import logging
 
@@ -11,7 +11,7 @@ log.setLevel(logging.ERROR)
 # Config
 CERT_PATH = 'tests-system/lobster-codebeamer/data/ssl/cert.pem'
 KEY_PATH = 'tests-system/lobster-codebeamer/data/ssl/key.pem'
-PORT = 5000
+PORT = 8999
 MOCK_ROUTE = '/api/v3/reports/<int:report_id>/items'
 
 
@@ -20,6 +20,17 @@ class CodebeamerFlask(Flask):
         super().__init__(__name__)
         self._responses = []
         self._lock = Lock()
+        self._counter = 0
+
+    @property
+    def counter(self):
+        with self._lock:
+            return self._counter
+
+    @counter.setter
+    def counter(self, value):
+        with self._lock:
+            self._counter = value
 
     @property
     def responses(self):
@@ -46,6 +57,7 @@ def create_app():
     @app.route(MOCK_ROUTE, methods=['GET'])
     def mock_response(report_id):
         """Return mocked item response or error."""
+        app.counter += 1
         return app.responses.pop(0)
     return app
 
@@ -54,15 +66,32 @@ if __name__ == '__main__':
     # NOTE: This is needed for manual testing, if a developer wants to run the server
     # locally
     app = create_app()
-    data = {
-        "item": 5,
-        "page": 1,
-        "total": 1,
-        "items": [{"item": {"id": 2, "version": 2, "tracker": {"id": 2}}}]
+    response_data = {
+        'page': 1,
+        'pageSize': 1,
+        'total': 1,
+        'items': [
+            {
+                'item': {
+                    'id': 5,
+                    'name': 'Requirement 5: Dynamic name',
+                    'description': 'Dynamic description for requirement 5.',
+                    'status': {
+                        'id': 5,
+                        'name': 'Status 5',
+                        'type': 'ChoiceOptionReference'
+                    },
+                    'tracker': {
+                        'id': 5,
+                        'name': 'Tracker_Name_5',
+                        'type': 'TrackerReference'
+                    },
+                    'version': 1
+                }
+            }
+        ]
     }
     app.responses = [
-        Response(status=429),
-        Response(status=429),
-        Response(json.dumps(data), status=200),
+        Response(json.dumps(response_data), status=200),
     ]
     app.start_server()
