@@ -24,7 +24,9 @@ import hashlib
 import tempfile
 from datetime import datetime, timezone
 
-from lobster.html import htmldoc, assets
+import markdown
+
+from lobster.html import htmldoc
 from lobster.report import Report
 from lobster.location import (Void_Reference,
                               File_Reference,
@@ -53,36 +55,6 @@ def name_hash(name):
     hobj = hashlib.md5()
     hobj.update(name.encode("UTF-8"))
     return hobj.hexdigest()
-
-
-# def write_stm(doc, xref, levels, stm):
-#     assert isinstance(doc, htmldoc.Document)
-
-#     doc.add_line('<table width="100%">')
-#     doc.add_line("<thead>")
-#     doc.add_line("<tr>")
-#     for level in levels:
-#         doc.add_line("<td>%s</td>" % html.escape(level["name"]))
-#     doc.add_line("</tr>")
-#     doc.add_line("</thead>")
-#     doc.add_line("<tbody>")
-#     for n, row in enumerate(stm):
-#         if n % 2:
-#             doc.add_line("<tr>")
-#         else:
-#             doc.add_line('<tr class="alt">')
-#         for level in levels:
-#             doc.add_line("<td>")
-#             for item_name in row[level["name"]]:
-#                 doc.add_line(
-#                     '<div class="subtle-%s">%s</div>' %
-#                     (xref[item_name]["tracing_status"].lower(),
-#                      xref_item(xref, item_name,
-#                                brief = level["kind"] != "implementation")))
-#             doc.add_line("</td>")
-#         doc.add_line("</tr>")
-#     doc.add_line("</tbody>")
-#     doc.add_line("</table>")
 
 
 def xref_item(item, link=True, brief=False):
@@ -230,14 +202,15 @@ def write_item_box_begin(doc, item):
                   item.tag.hash()))
 
     doc.add_line('<div class="item-name">%s %s</div>' %
-                 (assets.SVG_CHECK_SQUARE
+                 ('<svg class="icon"><use href="#svg-check-square"></use></svg>'
                   if item.tracing_status in (Tracing_Status.OK,
                                              Tracing_Status.JUSTIFIED)
-                  else assets.SVG_ALERT_TRIANGLE,
+                  else '<svg class="icon"><use href="#svg-alert-triangle"></use></svg>',
                   xref_item(item, link=False)))
 
     doc.add_line('<div class="attribute">Source: ')
-    doc.add_line(assets.SVG_EXTERNAL_LINK)
+    doc.add_line('<svg class="icon"><use href="#svg-external-link"></use></svg>')
+
     doc.add_line(item.location.to_html())
     doc.add_line("</div>")
 
@@ -298,7 +271,16 @@ def write_item_box_end(doc, item):
     doc.add_line('<!-- end item -->')
 
 
-def write_html(fd, report, dot, high_contrast):
+def generate_custom_data(report) -> str:
+    content = [
+        f"{key}: {value}<br>"
+        for key, value in report.custom_data.items()
+        if value
+    ]
+    return "".join(content)
+
+
+def write_html(fd, report, dot, high_contrast, render_md):
     assert isinstance(report, Report)
 
     doc = htmldoc.Document(
@@ -307,6 +289,13 @@ def write_html(fd, report, dot, high_contrast):
     )
 
     # Item styles
+    doc.style["#custom-data-banner"] = {
+        "position": "absolute",
+        "top": "1em",
+        "right": "2em",
+        "font-size": "0.9em",
+        "color": "white",
+    }
     doc.style[".item-ok, .item-partial, .item-missing, .item-justified"] = {
         "border"        : "1px solid black",
         "border-radius" : "0.5em",
@@ -357,6 +346,22 @@ def write_html(fd, report, dot, high_contrast):
         "margin-top" : "0.5em",
     }
 
+    # Render MD
+    if render_md:
+        doc.style[".md_description"] = {
+            "font-style" : "unset",
+        }
+        doc.style[".md_description h1"] = {
+            "padding" : "unset",
+            "margin"  : "unset"
+        }
+        doc.style[".md_description h2"] = {
+            "padding"       : "unset",
+            "margin"        : "unset",
+            "border-bottom" : "unset",
+            "text-align"    : "unset"
+        }
+
     # Columns
     doc.style[".columns"] = {
         "display" : "flex",
@@ -388,6 +393,9 @@ def write_html(fd, report, dot, high_contrast):
     for level in report.config.values():
         menu.add_link(level["name"], "#sec-" + name_hash(level["name"]))
     # doc.navbar.add_link("Software Traceability Matrix", "#matrix")
+    if report.custom_data:
+        content = generate_custom_data(report)
+        doc.add_line(f'<div id="custom-data-banner">{content}</div>')
     menu = doc.navbar.add_dropdown("LOBSTER", "right")
     menu.add_link("Documentation",
                   "%s/blob/main/README.md" % LOBSTER_GH)
@@ -514,10 +522,16 @@ def write_html(fd, report, dot, high_contrast):
                         doc.add_line("Status: %s" % html.escape(item.status))
                         doc.add_line('</div>')
                     if isinstance(item, Requirement) and item.text:
+                        if render_md:
+                            bq_class = ' class="md_description"'
+                            bq_text = markdown.markdown(item.text,
+                                                        extensions=['tables'])
+                        else:
+                            bq_class = ""
+                            bq_text = html.escape(item.text).replace("\n", "<br>")
+
                         doc.add_line('<div class="attribute">')
-                        doc.add_line(
-                            "<blockquote>%s</blockquote>" %
-                            html.escape(item.text).replace("\n", "<br>"))
+                        doc.add_line(f"<blockquote{bq_class}>{bq_text}</blockquote>")
                         doc.add_line('</div>')
                     write_item_tracing(doc, report, item)
                     write_item_box_end(doc, item)
@@ -544,10 +558,6 @@ def write_html(fd, report, dot, high_contrast):
             with open(filename, "r", encoding="UTF-8") as scripts:
                 doc.scripts.append("".join(scripts.readlines()))
 
-    ### STM
-    # doc.add_heading(2, "Software traceability matrix", "matrix")
-    # write_stm(doc, xref, levels, stm)
-
     fd.write(doc.render() + "\n")
 
 
@@ -569,6 +579,9 @@ def main():
     ap.add_argument("--high-contrast",
                     action="store_true",
                     help="Uses a color palette with a higher contrast.")
+    ap.add_argument("--render-md",
+                    action="store_true",
+                    help="Renders MD in description.")
     options = ap.parse_args()
 
     if not os.path.isfile(options.lobster_report):
@@ -581,7 +594,8 @@ def main():
         write_html(fd     = fd,
                    report = report,
                    dot = options.dot,
-                   high_contrast = options.high_contrast)
+                   high_contrast = options.high_contrast,
+                   render_md = options.render_md)
         print("LOBSTER HTML report written to %s" % options.out)
 
 
