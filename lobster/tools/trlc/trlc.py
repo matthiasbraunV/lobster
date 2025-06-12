@@ -72,16 +72,17 @@ class Config_Parser(Parser_Base):
 
         if not config["trace"]:
             return None
+        
+        item_data = n_obj.to_python_dict()
 
         item_tag = Tracing_Tag(namespace = "req",
                                tag       = n_obj.fully_qualified_name(),
-                               version   = None)
+                               version   = item_data.get("version", None))
 
         item_loc = File_Reference(filename = n_obj.location.file_name,
                                   line     = n_obj.location.line_no,
                                   column   = n_obj.location.col_no)
 
-        item_data = n_obj.to_python_dict()
         item_text = None
 
         if len(config["description_fields"]) == 1:
